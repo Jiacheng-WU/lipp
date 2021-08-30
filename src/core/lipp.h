@@ -3,6 +3,7 @@
 
 #include "lipp_base.h"
 #include <stdint.h>
+#include <math.h>
 #include <limits>
 #include <cstdio>
 #include <stack>
@@ -403,6 +404,8 @@ private:
 
         node->model.a = (mid1_target - mid2_target) / (mid1_key - mid2_key);
         node->model.b = mid1_target - node->model.a * mid1_key;
+        RT_ASSERT(isfinite(node->model.a));
+        RT_ASSERT(isfinite(node->model.b));
 
         { // insert key1&value1
             int pos = PREDICT_POS(node, key1);
@@ -487,6 +490,8 @@ private:
 
                 node->model.a = (mid1_target - mid2_target) / (mid1_key - mid2_key);
                 node->model.b = mid1_target - node->model.a * mid1_key;
+                RT_ASSERT(isfinite(node->model.a));
+                RT_ASSERT(isfinite(node->model.b));
 
                 const int lr_remains = static_cast<int>(size * BUILD_LR_REMAIN);
                 node->model.b += lr_remains;
@@ -606,6 +611,8 @@ private:
 
                         node->model.a = 1.0 / Ut;
                         node->model.b = (L - node->model.a * (keys[size-1-D] + keys[D])) / 2;
+                        RT_ASSERT(isfinite(node->model.a));
+                        RT_ASSERT(isfinite(node->model.b));
                         node->num_items = L;
                     } else {
                         stats.fmcd_broken_times ++;
@@ -626,6 +633,8 @@ private:
 
                         node->model.a = (mid1_target - mid2_target) / (mid1_key - mid2_key);
                         node->model.b = mid1_target - node->model.a * mid1_key;
+                        RT_ASSERT(isfinite(node->model.a));
+                        RT_ASSERT(isfinite(node->model.b));
                     }
                 }
                 RT_ASSERT(node->model.a >= 0);
