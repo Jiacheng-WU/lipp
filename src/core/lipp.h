@@ -358,6 +358,7 @@ private:
         node->num_inserts = node->num_insert_to_data = 0;
         node->num_items = 1;
         node->model.a = node->model.b = 0;
+        node->model.bias = 0;
         node->items = new_items(1);
         node->none_bitmap = new_bitmap(1);
         node->none_bitmap[0] = 0;
@@ -396,14 +397,12 @@ private:
             node = pending_two.top(); pending_two.pop();
         }
 
-        const double mid1_key = key1;
-        const double mid2_key = key2;
-
         const double mid1_target = node->num_items / 3;
         const double mid2_target = node->num_items * 2 / 3;
 
-        node->model.a = (mid1_target - mid2_target) / (mid1_key - mid2_key);
-        node->model.b = mid1_target - node->model.a * mid1_key;
+        node->model.a = (mid1_target - mid2_target) / static_cast<double>(key2 - key1);
+        node->model.b = mid1_target;
+        node->model.bias = key1;
         RT_ASSERT(isfinite(node->model.a));
         RT_ASSERT(isfinite(node->model.b));
 
@@ -467,6 +466,7 @@ private:
                 P* values = _values + begin;
                 const int size = end - begin;
                 const int BUILD_GAP_CNT = compute_gap_count(size);
+                const T bias = keys[0];
 
                 node->is_two = 0;
                 node->build_size = size;
@@ -481,8 +481,8 @@ private:
                 RT_ASSERT(mid1_pos < mid2_pos);
                 RT_ASSERT(mid2_pos < size - 1);
 
-                const double mid1_key = (static_cast<double>(keys[mid1_pos]) + static_cast<double>(keys[mid1_pos + 1])) / 2;
-                const double mid2_key = (static_cast<double>(keys[mid2_pos]) + static_cast<double>(keys[mid2_pos + 1])) / 2;
+                const double mid1_key = (static_cast<double>(keys[mid1_pos]-bias) + static_cast<double>(keys[mid1_pos+1]-bias)) / 2;
+                const double mid2_key = (static_cast<double>(keys[mid2_pos]-bias) + static_cast<double>(keys[mid2_pos+1]-bias)) / 2;
 
                 node->num_items = size * static_cast<int>(BUILD_GAP_CNT + 1);
                 const double mid1_target = mid1_pos * static_cast<int>(BUILD_GAP_CNT + 1) + static_cast<int>(BUILD_GAP_CNT + 1) / 2;
@@ -490,6 +490,7 @@ private:
 
                 node->model.a = (mid1_target - mid2_target) / (mid1_key - mid2_key);
                 node->model.b = mid1_target - node->model.a * mid1_key;
+                node->model.bias = bias;
                 RT_ASSERT(isfinite(node->model.a));
                 RT_ASSERT(isfinite(node->model.b));
 
@@ -523,7 +524,7 @@ private:
                         node->items[item_i].comp.data.key = keys[offset];
                         node->items[item_i].comp.data.value = values[offset];
                     } else {
-                        // ASSERT(next - offset <= (size+2) / 3);
+                        RT_ASSERT(next - offset <= (size+2) / 3);
                         BITMAP_CLEAR(node->none_bitmap, item_i);
                         BITMAP_SET(node->child_bitmap, item_i);
                         node->items[item_i].comp.child = new_nodes(1);
@@ -575,6 +576,7 @@ private:
                 P* values = _values + begin;
                 const int size = end - begin;
                 const int BUILD_GAP_CNT = compute_gap_count(size);
+                const T bias = keys[0];
 
                 node->is_two = 0;
                 node->build_size = size;
@@ -610,7 +612,8 @@ private:
                         stats.fmcd_success_times ++;
 
                         node->model.a = 1.0 / Ut;
-                        node->model.b = (L - node->model.a * (keys[size-1-D] + keys[D])) / 2;
+                        node->model.b = (L - node->model.a * double((keys[size-1-D]-bias) + (keys[D]-bias))) / 2;
+                        node->model.bias = bias;
                         RT_ASSERT(isfinite(node->model.a));
                         RT_ASSERT(isfinite(node->model.b));
                         node->num_items = L;
@@ -624,8 +627,8 @@ private:
                         RT_ASSERT(mid1_pos < mid2_pos);
                         RT_ASSERT(mid2_pos < size - 1);
 
-                        const double mid1_key = (static_cast<double>(keys[mid1_pos]) + static_cast<double>(keys[mid1_pos + 1])) / 2;
-                        const double mid2_key = (static_cast<double>(keys[mid2_pos]) + static_cast<double>(keys[mid2_pos + 1])) / 2;
+                        const double mid1_key = (static_cast<double>(keys[mid1_pos]-bias) + static_cast<double>(keys[mid1_pos + 1]-bias)) / 2;
+                        const double mid2_key = (static_cast<double>(keys[mid2_pos]-bias) + static_cast<double>(keys[mid2_pos + 1]-bias)) / 2;
 
                         node->num_items = size * static_cast<int>(BUILD_GAP_CNT + 1);
                         const double mid1_target = mid1_pos * static_cast<int>(BUILD_GAP_CNT + 1) + static_cast<int>(BUILD_GAP_CNT + 1) / 2;
@@ -633,6 +636,7 @@ private:
 
                         node->model.a = (mid1_target - mid2_target) / (mid1_key - mid2_key);
                         node->model.b = mid1_target - node->model.a * mid1_key;
+                        node->model.bias = bias;
                         RT_ASSERT(isfinite(node->model.a));
                         RT_ASSERT(isfinite(node->model.b));
                     }
@@ -668,7 +672,7 @@ private:
                         node->items[item_i].comp.data.key = keys[offset];
                         node->items[item_i].comp.data.value = values[offset];
                     } else {
-                        // ASSERT(next - offset <= (size+2) / 3);
+                        RT_ASSERT(next - offset <= (size+2) / 3);
                         BITMAP_CLEAR(node->none_bitmap, item_i);
                         BITMAP_SET(node->child_bitmap, item_i);
                         node->items[item_i].comp.child = new_nodes(1);

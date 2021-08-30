@@ -13,19 +13,20 @@ class LinearModel
 public:
     double a = 0; // slope
     double b = 0; // intercept
+    T bias = 0; // bias
 
     LinearModel() = default;
-    LinearModel(double a, double b) : a(a), b(b) {}
-    explicit LinearModel(const LinearModel &other) : a(other.a), b(other.b) {}
+    LinearModel(double a, double b, T bias) : a(a), b(b), bias(bias) {}
+    explicit LinearModel(const LinearModel &other) : a(other.a), b(other.b), bias(other.bias) {}
 
     inline int predict(T key) const
     {
-        return std::floor(a * static_cast<double>(key) + b);
+        return std::floor(a * static_cast<double>(key - bias) + b);
     }
 
     inline double predict_double(T key) const
     {
-        return a * static_cast<double>(key) + b;
+        return a * static_cast<double>(key - bias) + b;
     }
 };
 
