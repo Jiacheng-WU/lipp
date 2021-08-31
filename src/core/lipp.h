@@ -672,7 +672,7 @@ private:
                         node->items[item_i].comp.data.key = keys[offset];
                         node->items[item_i].comp.data.value = values[offset];
                     } else {
-                        RT_ASSERT(next - offset <= (size+2) / 3);
+                        // RT_ASSERT(next - offset <= (size+2) / 3);
                         BITMAP_CLEAR(node->none_bitmap, item_i);
                         BITMAP_SET(node->child_bitmap, item_i);
                         node->items[item_i].comp.child = new_nodes(1);
