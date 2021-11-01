@@ -401,13 +401,13 @@ private:
             node = pending_two.top(); pending_two.pop();
         }
 
-        const double mid1_key = key1;
-        const double mid2_key = key2;
+        const long double mid1_key = key1;
+        const long double mid2_key = key2;
 
         const double mid1_target = node->num_items / 3;
         const double mid2_target = node->num_items * 2 / 3;
 
-        node->model.a = (mid1_target - mid2_target) / (mid1_key - mid2_key);
+        node->model.a = (mid2_target - mid1_target) / (mid2_key - mid1_key);
         node->model.b = mid1_target - node->model.a * mid1_key;
         RT_ASSERT(isfinite(node->model.a));
         RT_ASSERT(isfinite(node->model.b));
@@ -486,14 +486,16 @@ private:
                 RT_ASSERT(mid1_pos < mid2_pos);
                 RT_ASSERT(mid2_pos < size - 1);
 
-                const double mid1_key = (static_cast<double>(keys[mid1_pos]) + static_cast<double>(keys[mid1_pos + 1])) / 2;
-                const double mid2_key = (static_cast<double>(keys[mid2_pos]) + static_cast<double>(keys[mid2_pos + 1])) / 2;
+                const long double mid1_key =
+                        (static_cast<long double>(keys[mid1_pos]) + static_cast<long double>(keys[mid1_pos + 1])) / 2;
+                const long double mid2_key =
+                        (static_cast<long double>(keys[mid2_pos]) + static_cast<long double>(keys[mid2_pos + 1])) / 2;
 
                 node->num_items = size * static_cast<int>(BUILD_GAP_CNT + 1);
                 const double mid1_target = mid1_pos * static_cast<int>(BUILD_GAP_CNT + 1) + static_cast<int>(BUILD_GAP_CNT + 1) / 2;
                 const double mid2_target = mid2_pos * static_cast<int>(BUILD_GAP_CNT + 1) + static_cast<int>(BUILD_GAP_CNT + 1) / 2;
 
-                node->model.a = (mid1_target - mid2_target) / (mid1_key - mid2_key);
+                node->model.a = (mid2_target - mid1_target) / (mid2_key - mid1_key);
                 node->model.b = mid1_target - node->model.a * mid1_key;
                 RT_ASSERT(isfinite(node->model.a));
                 RT_ASSERT(isfinite(node->model.b));
@@ -598,7 +600,8 @@ private:
                     int i = 0;
                     int D = 1;
                     RT_ASSERT(D <= size-1-D);
-                    double Ut = double(keys[size-1-D] - keys[D]) / double(L - 2) + 1e-6;
+                    double Ut = (static_cast<long double>(keys[size - 1 - D]) - static_cast<long double>(keys[D])) /
+                                (static_cast<double>(L - 2)) + 1e-6;
                     while (i < size - 1 - D) {
                         while (i + D < size && keys[i + D] - keys[i] >= Ut) {
                             i ++;
@@ -609,13 +612,15 @@ private:
                         D = D + 1;
                         if (D * 3 > size) break;
                         RT_ASSERT(D <= size-1-D);
-                        Ut = double(keys[size-1-D] - keys[D]) / double(L - 2) + 1e-6;
+                        Ut = (static_cast<long double>(keys[size - 1 - D]) - static_cast<long double>(keys[D])) /
+                             (static_cast<double>(L - 2)) + 1e-6;
                     }
                     if (D * 3 <= size) {
                         stats.fmcd_success_times ++;
 
                         node->model.a = 1.0 / Ut;
-                        node->model.b = (L - node->model.a * (keys[size-1-D] + keys[D])) / 2;
+                        node->model.b = (L - node->model.a * (static_cast<long double>(keys[size - 1 - D]) +
+                                                              static_cast<long double>(keys[D]))) / 2;
                         RT_ASSERT(isfinite(node->model.a));
                         RT_ASSERT(isfinite(node->model.b));
                         node->num_items = L;
@@ -629,14 +634,16 @@ private:
                         RT_ASSERT(mid1_pos < mid2_pos);
                         RT_ASSERT(mid2_pos < size - 1);
 
-                        const double mid1_key = (static_cast<double>(keys[mid1_pos]) + static_cast<double>(keys[mid1_pos + 1])) / 2;
-                        const double mid2_key = (static_cast<double>(keys[mid2_pos]) + static_cast<double>(keys[mid2_pos + 1])) / 2;
+                        const long double mid1_key = (static_cast<long double>(keys[mid1_pos]) +
+                                                      static_cast<long double>(keys[mid1_pos + 1])) / 2;
+                        const long double mid2_key = (static_cast<long double>(keys[mid2_pos]) +
+                                                      static_cast<long double>(keys[mid2_pos + 1])) / 2;
 
                         node->num_items = size * static_cast<int>(BUILD_GAP_CNT + 1);
                         const double mid1_target = mid1_pos * static_cast<int>(BUILD_GAP_CNT + 1) + static_cast<int>(BUILD_GAP_CNT + 1) / 2;
                         const double mid2_target = mid2_pos * static_cast<int>(BUILD_GAP_CNT + 1) + static_cast<int>(BUILD_GAP_CNT + 1) / 2;
 
-                        node->model.a = (mid1_target - mid2_target) / (mid1_key - mid2_key);
+                        node->model.a = (mid2_target - mid1_target) / (mid2_key - mid1_key);
                         node->model.b = mid1_target - node->model.a * mid1_key;
                         RT_ASSERT(isfinite(node->model.a));
                         RT_ASSERT(isfinite(node->model.b));
