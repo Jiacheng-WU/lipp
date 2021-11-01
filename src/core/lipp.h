@@ -10,8 +10,12 @@
 #include <vector>
 #include <cstring>
 #include <sstream>
+#include <iostream>
 
-typedef uint8_t bitmap_t;
+// typedef uint8_t bitmap_t;
+typedef uint16_t bitmap_t;
+#define BITMAP_ZERO 0
+#define BITMAP_ONE 0xFFFF
 #define BITMAP_WIDTH (sizeof(bitmap_t) * 8)
 #define BITMAP_SIZE(num_items) (((num_items) + BITMAP_WIDTH - 1) / BITMAP_WIDTH)
 #define BITMAP_GET(bitmap, pos) (((bitmap)[(pos) / BITMAP_WIDTH] >> ((pos) % BITMAP_WIDTH)) & 1)
@@ -40,25 +44,19 @@ class LIPP
     static_assert(std::is_arithmetic<T>::value, "LIPP key type must be numeric.");
 
     inline int compute_gap_count(int size) {
-        if (size >= 1000000) return 1;
-        if (size >= 100000) return 2;
         return 5;
     }
 
     struct Node;
     inline int PREDICT_POS(Node* node, T key) const {
         double v = node->model.predict_double(key);
-        if (v > std::numeric_limits<int>::max() / 2) {
-            return node->num_items - 1;
-        }
         if (v < 0) {
             return 0;
         }
+        if (v > std::numeric_limits<int>::max() / 2) {
+            return node->num_items - 1;
+        }
         return std::min(node->num_items - 1, static_cast<int>(v));
-    }
-
-    static void remove_last_bit(bitmap_t& bitmap_item) {
-        bitmap_item -= 1 << BITMAP_NEXT_1(bitmap_item);
     }
 
     const double BUILD_LR_REMAIN;
@@ -176,6 +174,14 @@ public:
         root = build_tree_bulk(keys, values, num_keys);
         delete[] keys;
         delete[] values;
+    }
+    // Find the keys which are in range [lower, upper], returns the number of found keys.
+    int range_query(T* results, const T& lower, const T& upper) const {
+        return range_core<false, false>(results, 0, root, lower, upper);
+    }
+    // Find the minimum `len` keys which are no less than `lower`, returns the number of found keys.
+    int range_query_len(T* results, const T& lower, int len) {
+        return range_core_len<false>(results, 0, root, lower, len);
     }
 
     void show() const {
@@ -360,10 +366,9 @@ private:
         node->model.a = node->model.b = 0;
         node->items = new_items(1);
         node->none_bitmap = new_bitmap(1);
-        node->none_bitmap[0] = 0;
-        BITMAP_SET(node->none_bitmap, 0);
+        node->none_bitmap[0] = BITMAP_ONE;
         node->child_bitmap = new_bitmap(1);
-        node->child_bitmap[0] = 0;
+        node->child_bitmap[0] = BITMAP_ZERO;
 
         return node;
     }
@@ -375,7 +380,7 @@ private:
             std::swap(value1, value2);
         }
         RT_ASSERT(key1 < key2);
-        static_assert(BITMAP_WIDTH == 8);
+        // static_assert(BITMAP_WIDTH == 8);
 
         Node* node = NULL;
         if (pending_two.empty()) {
@@ -390,8 +395,8 @@ private:
             node->items = new_items(node->num_items);
             node->none_bitmap = new_bitmap(1);
             node->child_bitmap = new_bitmap(1);
-            node->none_bitmap[0] = 0xff;
-            node->child_bitmap[0] = 0;
+            node->none_bitmap[0] = BITMAP_ONE;
+            node->child_bitmap[0] = BITMAP_ZERO;
         } else {
             node = pending_two.top(); pending_two.pop();
         }
@@ -718,8 +723,8 @@ private:
                 RT_ASSERT(node->num_items == 8);
                 node->size = 2;
                 node->num_inserts = node->num_insert_to_data = 0;
-                node->none_bitmap[0] = 0xff;
-                node->child_bitmap[0] = 0;
+                node->none_bitmap[0] = BITMAP_ONE;
+                node->child_bitmap[0] = BITMAP_ZERO;
                 pending_two.push(node);
             } else {
                 delete_items(node->items, node->num_items);
@@ -763,8 +768,8 @@ private:
                     RT_ASSERT(node->num_items == 8);
                     node->size = 2;
                     node->num_inserts = node->num_insert_to_data = 0;
-                    node->none_bitmap[0] = 0xff;
-                    node->child_bitmap[0] = 0;
+                    node->none_bitmap[0] = BITMAP_ONE;
+                    node->child_bitmap[0] = BITMAP_ZERO;
                     pending_two.push(node);
                 } else {
                     delete_items(node->items, node->num_items);
@@ -854,6 +859,177 @@ private:
         }
 
         return path[0];
+    }
+
+    // SATISFY_LOWER = true means all the keys in the subtree of `node` are no less than to `lower`.
+    // SATISFY_UPPER = true means all the keys in the subtree of `node` are no greater than to `upper`.
+    template<bool SATISFY_LOWER, bool SATISFY_UPPER>
+    int range_core(T* results, int pos, Node* node, const T& lower, const T& upper) const
+    {
+        if constexpr (SATISFY_LOWER && SATISFY_UPPER) {
+            int bit_pos = 0;
+            const bitmap_t* none_bitmap = node->none_bitmap;
+            while (bit_pos < node->num_items) {
+                bitmap_t not_none = ~(*none_bitmap);
+                while (not_none) {
+                    int latest_pos = BITMAP_NEXT_1(not_none);
+                    not_none ^= 1 << latest_pos;
+
+                    int i = bit_pos + latest_pos;
+                    if (BITMAP_GET(node->child_bitmap, i) == 0) {
+                        results[pos] = node->items[i].comp.data.key;
+                        // __builtin_prefetch((void*)&(node->items[i].comp.data.key) + 64);
+                        pos ++;
+                    } else {
+                        pos = range_core<true, true>(results, pos, node->items[i].comp.child, lower, upper);
+                    }
+                }
+
+                bit_pos += BITMAP_WIDTH;
+                none_bitmap ++;
+            }
+            return pos;
+        } else {
+            int lower_pos = SATISFY_LOWER ? -1 : PREDICT_POS(node, lower);
+            int upper_pos = SATISFY_UPPER ? node->num_items : PREDICT_POS(node, upper);
+            if constexpr (!SATISFY_LOWER) {
+                if (BITMAP_GET(node->none_bitmap, lower_pos) == 0) {
+                    if (BITMAP_GET(node->child_bitmap, lower_pos) == 0) {
+                        do {
+                            if (node->items[lower_pos].comp.data.key < lower) break;
+                            if constexpr (!SATISFY_UPPER) {
+                                if (node->items[lower_pos].comp.data.key > upper) break;
+                            }
+                            results[pos] = node->items[lower_pos].comp.data.key;
+                            pos ++;
+                        } while (false);
+                    } else {
+                        if (lower_pos < upper_pos) {
+                            pos = range_core<false, true>(results, pos, node->items[lower_pos].comp.child, lower, upper);
+                        } else {
+                            pos = range_core<false, false>(results, pos, node->items[lower_pos].comp.child, lower, upper);
+                        }
+                    }
+                }
+            }
+            {
+                int bit_pos = (lower_pos + 1) / BITMAP_WIDTH * BITMAP_WIDTH;
+                const bitmap_t* none_bitmap = node->none_bitmap + bit_pos / BITMAP_WIDTH;
+                while (bit_pos < upper_pos) {
+                    bitmap_t not_none = ~(*none_bitmap);
+                    while (not_none) {
+                        int latest_pos = BITMAP_NEXT_1(not_none);
+                        not_none ^= 1 << latest_pos;
+
+                        int i = bit_pos + latest_pos;
+                        if (i <= lower_pos) continue;
+                        if (i >= upper_pos) break;
+
+                        if (BITMAP_GET(node->child_bitmap, i) == 0) {
+                            results[pos] = node->items[i].comp.data.key;
+                            // __builtin_prefetch((void*)&(node->items[i].comp.data.key) + 64);
+                            pos ++;
+                        } else {
+                            pos = range_core<true, true>(results, pos, node->items[i].comp.child, lower, upper);
+                        }
+                    }
+
+                    bit_pos += BITMAP_WIDTH;
+                    none_bitmap ++;
+                }
+            }
+            if constexpr (!SATISFY_UPPER) {
+                if (lower_pos < upper_pos) {
+                    if (BITMAP_GET(node->none_bitmap, upper_pos) == 0) {
+                        if (BITMAP_GET(node->child_bitmap, upper_pos) == 0) {
+                            if (node->items[upper_pos].comp.data.key <= upper) {
+                                results[pos] = node->items[upper_pos].comp.data.key;
+                                pos ++;
+                            }
+                        } else {
+                            pos = range_core<true, false>(results, pos, node->items[upper_pos].comp.child, lower, upper);
+                        }
+                    }
+                }
+            }
+            return pos;
+        }
+    }
+    // SATISFY_LOWER = true means all the keys in the subtree of `node` are no less than to `lower`.
+    template<bool SATISFY_LOWER>
+    int range_core_len(T* results, int pos, Node* node, const T& lower, int len)
+    {
+        if constexpr (SATISFY_LOWER) {
+            int bit_pos = 0;
+            const bitmap_t* none_bitmap = node->none_bitmap;
+            while (bit_pos < node->num_items) {
+                bitmap_t not_none = ~(*none_bitmap);
+                while (not_none) {
+                    int latest_pos = BITMAP_NEXT_1(not_none);
+                    not_none ^= 1 << latest_pos;
+
+                    int i = bit_pos + latest_pos;
+                    if (BITMAP_GET(node->child_bitmap, i) == 0) {
+                        results[pos] = node->items[i].comp.data.key;
+                        // __builtin_prefetch((void*)&(node->items[i].comp.data.key) + 64);
+                        pos ++;
+                    } else {
+                        pos = range_core_len<true>(results, pos, node->items[i].comp.child, lower, len);
+                    }
+                    if (pos >= len) {
+                        return pos;
+                    }
+                }
+
+                bit_pos += BITMAP_WIDTH;
+                none_bitmap ++;
+            }
+            return pos;
+        } else {
+            int lower_pos = PREDICT_POS(node, lower);
+            if (BITMAP_GET(node->none_bitmap, lower_pos) == 0) {
+                if (BITMAP_GET(node->child_bitmap, lower_pos) == 0) {
+                    if (node->items[lower_pos].comp.data.key >= lower) {
+                        // results[pos] = {node->items[lower_pos].comp.data.key, node->items[lower_pos].comp.data.value};
+                        results[pos] = node->items[lower_pos].comp.data.key;
+                        pos ++;
+                    }
+                } else {
+                    pos = range_core_len<false>(results, pos, node->items[lower_pos].comp.child, lower, len);
+                }
+                if (pos >= len) {
+                    return pos;
+                }
+            }
+            if (lower_pos + 1 >= node->num_items) {
+                return pos;
+            }
+            int bit_pos = (lower_pos + 1) / BITMAP_WIDTH * BITMAP_WIDTH;
+            const bitmap_t* none_bitmap = node->none_bitmap + bit_pos / BITMAP_WIDTH;
+            while (bit_pos < node->num_items) {
+                bitmap_t not_none = ~(*none_bitmap);
+                while (not_none) {
+                    int latest_pos = BITMAP_NEXT_1(not_none);
+                    not_none ^= 1 << latest_pos;
+
+                    int i = bit_pos + latest_pos;
+                    if (i <= lower_pos) continue;
+                    if (BITMAP_GET(node->child_bitmap, i) == 0) {
+                        results[pos] = node->items[i].comp.data.key;
+                        // __builtin_prefetch((void*)&(node->items[i].comp.data.key) + 64);
+                        pos ++;
+                    } else {
+                        pos = range_core_len<true>(results, pos, node->items[i].comp.child, lower, len);
+                    }
+                    if (pos >= len) {
+                        return pos;
+                    }
+                }
+                bit_pos += BITMAP_WIDTH;
+                none_bitmap ++;
+            }
+            return pos;
+        }
     }
 };
 
