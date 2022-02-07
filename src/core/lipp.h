@@ -262,22 +262,21 @@ public:
         printf("\t time_build_tree_bulk = %lf\n", stats.time_build_tree_bulk);
         #endif
     }
-    size_t index_size() const {
+    size_t index_size(bool total=false) const {
         std::stack<Node*> s;
         s.push(root);
 
         size_t size = 0;
         while (!s.empty()) {
             Node* node = s.top(); s.pop();
-            bool has_child = false;
+            size += sizeof(*node);
             for (int i = 0; i < node->num_items; i ++) {
+                if (total) size += sizeof(Item);
                 if (BITMAP_GET(node->child_bitmap, i) == 1) {
-                    size += sizeof(Item);
-                    has_child = true;
+                    if (!total) size += sizeof(Item);
                     s.push(node->items[i].comp.child);
                 }
             }
-            if (has_child) size += sizeof(*node);
         }
         return size;
     }
